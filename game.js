@@ -1,5 +1,5 @@
 /* ============================================================
-   扑火 TOWARD THE LIGHT — 基于 The Plan 美术管线的弹幕射击
+   基于 The Plan 美术管线的弹幕射击
    管线复用（与 app.js 同源的数据与手法）：
      scene.json / mesh/*.json / tex/*.png  (Unity 4.5.5p5 提取)
      · renderQueue 手工深度分层（15 级队列 → renderOrder）
