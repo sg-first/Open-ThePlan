@@ -1347,6 +1347,20 @@ function endBoss(e) {
 }
 
 /* ============ 8. 弹更新与判定 ============ */
+/** 敌弹被自机弹打爆：冲击环 + 火花 + 闪光 + 音效 */
+function popFx(x, y, col) {
+  fx.push({ x, y, z: 0.15, vx: 0, vy: 0, age: 0, life: 0.28,
+    size: 0.35, sizeV: 7, ang: 0, angV: 0, cell: CELL.ring, col: col, a: 0.95, drag: 0 });
+  fx.push({ x, y, z: 0.12, vx: 0, vy: 0, age: 0, life: 0.16,
+    size: 0.55, sizeV: 0, ang: 0, angV: 0, cell: CELL.dot, col: WHITE, a: 1, drag: 0 });
+  for (let i = 0; i < 4; i++) {
+    const a = rand(0, TAU), v = rand(1.5, 3.2);
+    fx.push({ x, y, z: 0.1, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 0.8, age: 0, life: rand(0.2, 0.35),
+      size: rand(0.14, 0.24), sizeV: 0, ang: a, angV: rand(-8, 8), cell: CELL.star,
+      col: col, a: 0.95, drag: 3 });
+  }
+  AU.pop();
+}
 function updateShots(dt) {
   const scroll = S.climb;
   const px = player.x, py = player.y, alive = player.alive && player.inv <= 0;
@@ -1399,6 +1413,21 @@ function updateShots(dt) {
           if (bossActive && bossActive.e === e) endBoss(e);
         }
         break;
+      }
+    }
+    // 互消：自机弹可以打爆敌弹
+    if (b.age <= b.life) {
+      for (let j = eb.length - 1; j >= 0; j--) {
+        const eb2 = eb[j];
+        const dx = b.x - eb2.x, dy = b.y - eb2.y;
+        const rr = b.r + eb2.r + 0.18;
+        if (dx * dx + dy * dy < rr * rr) {
+          eb.splice(j, 1);
+          b.age = b.life + 1;
+          S.score += 5;
+          popFx(eb2.x, eb2.y, eb2.col);
+          break;
+        }
       }
     }
   }
@@ -1484,6 +1513,13 @@ const AU = {
     if (now - (this._gT || 0) < 55) return;
     this._gT = now;
     this.tone(1900 + rand(-120, 120), 0.035, 'sine', 0.06, 2400);
+  },
+  pop() {
+    const now = performance.now();
+    if (now - (this._pT || 0) < 45) return;   // 高频互消时限流，避免糊成一片
+    this._pT = now;
+    this.tone(1400 + rand(-100, 100), 0.05, 'triangle', 0.07, 2200);
+    this.tone(600, 0.04, 'square', 0.03, 300);
   },
   bomb() {
     this.tone(90, 0.9, 'sawtooth', 0.3, 720);
