@@ -20,9 +20,9 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const TAU = Math.PI * 2;
 
 const BAND_H = 120;          // 森林平铺周期
-const CAM_Z = 30;            // 相机距离（长焦 20°，还原原片微距压缩感）
-const FOV = 20;
-const HALF_H = 4.55;         // z=0 平面可视半高（30*tan10°≈5.29，留 HUD 边）
+const CAM_Z = 44;            // 相机距离（32° 广角 + 拉远，扩大景别便于规避）
+const FOV = 32;
+const HALF_H = 11.9;         // z=0 平面可玩半高（视野半高 12.6，几乎全屏可玩，仅顶部留 HUD 边）
 const GOAL_STEP = 600;       // 每 NG+ 周期 600m
 const MINI_ALTS = [150, 330, 480];
 
@@ -581,7 +581,7 @@ function updateAmbient(dt, t) {
   for (const m of MOTES) {
     m.x += (m.vx + Math.sin(t * 0.7 + m.ph) * 0.12) * dt;
     m.oy += m.vy * dt;
-    if (m.oy > 7) m.oy = -7;
+    if (m.oy > HALF_H + 1.5) m.oy = -HALF_H - 1.5;
     if (m.x > 12) m.x = -12;
     if (m.x < -12) m.x = 12;
     bAdd.push(m.x, S.camY + m.oy, m.z, m.s * 2.4,
@@ -638,9 +638,10 @@ function buildPlayer() {
 function updatePlayer(dt) {
   const p = player;
   if (!p.alive) return;
+  updateMouseTarget();   // 每帧重算鼠标目标（相机随自机移动）
   p.inv = Math.max(0, p.inv - dt);
   p.focus = !!(keys.ShiftLeft || keys.ShiftRight);
-  const spd = (p.focus ? 4.2 : 9.2) * dt;
+  const spd = (p.focus ? 7 : 18.5) * dt;
 
   let dx = 0, dy = 0;
   if (keys.KeyA || keys.ArrowLeft) dx -= 1;
@@ -653,7 +654,7 @@ function updatePlayer(dt) {
     mouse.active = false;
   } else if (mouse.active) {
     p.x = lerp(p.x, p.wx, Math.min(1, dt * 14));
-    p.ry = lerp(p.ry, p.wy, Math.min(1, dt * 14));
+    p.ry = lerp(p.ry, p.wy - S.camY, Math.min(1, dt * 14));   // wy 是世界坐标，ry 是相对相机高度
   }
   p.x = clamp(p.x, -PLAY.halfW + 0.6, PLAY.halfW - 0.6);
   p.ry = clamp(p.ry, -HALF_H + 0.85, HALF_H - 0.85);
@@ -802,12 +803,13 @@ function spawnEnemy(type, x, y, opt) {
     e.mesh = makeCard('tex/Mushroom03.png', [1, 0.72, 0.78], 1.35);
   } else if (type === 'leaf') {
     e.hp = 4; e.r = 0.5; e.score = 200;
-    e.vx = (x > 0 ? -1 : 1) * (3.4 + D() * 0.7);
+    e.vx = (x > 0 ? -1 : 1) * (3.4 + D() * 0.7) * (S.hsc || 1);
     e.ph = rand(0, TAU);
     e.mesh = makeCard('tex/Leaf_Particle_Blurred.png', [0.65, 1, 0.8], 1.15, true);
+    e.mesh.scale.set(1.7, 0.85, 1);
   } else if (type === 'drone') {
     e.hp = 3; e.r = 0.55; e.score = 150;
-    e.vx = (x > 0 ? -1 : 1) * (5.2 + D() * 0.6);
+    e.vx = (x > 0 ? -1 : 1) * (5.2 + D() * 0.6) * (S.hsc || 1);
     e.mesh = makeCard('tex/bokehBlur.png', [1, 0.62, 0.3], 1.5, true);
   } else if (type === 'web') {
     e.hp = 18; e.r = 0.85; e.score = 800; e.dropPower = 2;
@@ -835,7 +837,7 @@ function updateEnemies(dt) {
     e.t += dt;
     switch (e.type) {
       case 'moth': {
-        e.x += Math.sin(e.t * e.sway + e.ph) * 0.9 * dt;
+        e.x += Math.sin(e.t * e.sway + e.ph) * 0.9 * (S.hsc || 1) * dt;
         e.y += (e.vy - scroll) * dt;
         e.fireT -= dt;
         if (e.fireT <= 0 && Math.abs(e.y - S.camY) < HALF_H) {
@@ -920,7 +922,7 @@ function comboMult() { return 1 + 0.15 * Math.min(S.combo, 15); }
 /* ---- 小 Boss：织网者 ---- */
 function setupWeaver(e) {
   e.hp = 260 * (1 + S.ng * 0.4); e.r = 1.9; e.score = 5000; e.dropPower = 0;
-  e.ty = S.camY + 3.1; e.x = 0; e.phase = 0; e.pt = 0; e.fireT = 1.2;
+  e.ty = S.camY + 5; e.x = 0; e.phase = 0; e.pt = 0; e.fireT = 1.2;
   e.sp = 0; e.inving = true; e.entering = true; e.y = S.camY + HALF_H + 3;
   e.mesh = makeWebMesh(6.5);
   e.core = makeCard('tex/LightBulb_Glow.png', [1, 0.55, 0.75], 2.4, true);
@@ -1005,7 +1007,7 @@ function weaverFire(e, dt) {
 /* ---- 最终 Boss：灯 ---- */
 function setupBulb(e) {
   e.hp = 950 * (1 + S.ng * 0.45); e.r = 2.0; e.score = 20000; e.dropPower = 0;
-  e.ty = S.camY + 3.2; e.x = 0; e.phase = 0; e.pt = 0; e.fireT = 1.5;
+  e.ty = S.camY + 5.2; e.x = 0; e.phase = 0; e.pt = 0; e.fireT = 1.5;
   e.inving = true; e.entering = true; e.y = S.camY + HALF_H + 3;
   const g = new THREE.Group();
   const parts = [['Lamp Lightbulb Glass', 'LightBulb_Glass'], ['Lamp Metal', 'LightBulb_Metal'],
@@ -1643,11 +1645,24 @@ function bindInput() {
 }
 function setMouseWorld(e) {
   const rect = renderer.domElement.getBoundingClientRect();
-  const nx = (e.clientX - rect.left) / rect.width * 2 - 1;
-  const ny = -((e.clientY - rect.top) / rect.height * 2 - 1);
-  player.wx = nx * PLAY.halfW;
-  player.wy = ny * HALF_H;
+  mouse.nx = (e.clientX - rect.left) / rect.width * 2 - 1;
+  mouse.ny = -((e.clientY - rect.top) / rect.height * 2 - 1);
+  updateMouseTarget();
   mouse.active = true;
+}
+// 每帧用当前相机把鼠标 NDC 反投影到 z=0 平面（消除相机跟随视差）
+function updateMouseTarget() {
+  if (mouse.nx === undefined) return;
+  camera3.updateMatrixWorld();
+  const v = new THREE.Vector3(mouse.nx, mouse.ny, 0.5).unproject(camera3);
+  const dir = v.sub(camera3.position).normalize();
+  if (Math.abs(dir.z) > 1e-4) {
+    const t = -camera3.position.z / dir.z;
+    if (t > 0) {
+      player.wx = camera3.position.x + dir.x * t;
+      player.wy = camera3.position.y + dir.y * t;
+    }
+  }
 }
 function togglePause() {
   S.paused = !S.paused;
@@ -1705,7 +1720,8 @@ function resize() {
     camera3.aspect = w / h;
     camera3.updateProjectionMatrix();
   }
-  PLAY.halfW = clamp(HALF_H * (w / h) - 0.9, 4.4, 9);
+  PLAY.halfW = clamp(HALF_H * (w / h) - 0.5, 6, 24);
+  S.hsc = Math.max(1, PLAY.halfW / 13);   // 横向速度缩放（战场变宽，敌人横向同步加速）
   const type = renderer.capabilities.isWebGL2 ? THREE.HalfFloatType : THREE.UnsignedByteType;
   const hw = Math.max(2, Math.floor(w / 2)), hh = Math.max(2, Math.floor(h / 2));
   ['rtScene', 'rtA', 'rtB'].forEach(k => RT[k] && RT[k].dispose());
@@ -1769,8 +1785,9 @@ function gameOver() {
 function updateCamera(dt) {
   const shx = (Math.random() - 0.5) * S.shake * 0.5;
   const shy = (Math.random() - 0.5) * S.shake * 0.5;
-  camera3.position.set(player.x * 0.1 + shx, S.camY + shy, CAM_Z);
-  camera3.lookAt(player.x * 0.1, S.camY + (player.y - S.camY) * 0.1, 0);
+  // 固定朝前：屏幕坐标 ↔ 世界坐标严格线性，鼠标映射零偏差
+  camera3.position.set(shx, S.camY + shy, CAM_Z);
+  camera3.lookAt(shx, S.camY + shy, 0);
   S.shake = Math.max(0, S.shake - dt * 2.2);
 }
 function renderFrame(t) {
@@ -1815,7 +1832,7 @@ function stepGame(dt) {
   // 爬升（Boss 战时悬停）
   const bossHold = !!bossActive;
   const ramp = clamp(S.time / 3, 0, 1);
-  const target = bossHold ? 0 : ramp * (4.2 + Math.min(S.ng, 3) * 1.1 + cycleAlt() / GOAL_STEP * 2.2);
+  const target = bossHold ? 0 : ramp * (5.5 + Math.min(S.ng, 3) * 1.2 + cycleAlt() / GOAL_STEP * 2.4);
   S.climb = lerp(S.climb, target, Math.min(1, dt * 3));
   S.camY += S.climb * dt;
 
