@@ -214,9 +214,18 @@ function dummyTex() {
   return DUMMY_TEX;
 }
 
+// 内嵌数据源（单文件版用）：window.__TP_DATA = {scene, meshes:{file:obj}, tex:{path:dataURI}}
+// 存在时直接取用，避免 file:// 下 fetch / 贴图加载被浏览器同源策略拦掉。
+const IDATA = window.__TP_DATA || null;
+
 function loadTex(relPath) {
   if (texCache.has(relPath)) return texCache.get(relPath);
-  const t = new THREE.TextureLoader().load(relPath);
+  let t;
+  if (IDATA && IDATA.tex && IDATA.tex[relPath]) {
+    t = new THREE.TextureLoader().load(IDATA.tex[relPath]);
+  } else {
+    t = new THREE.TextureLoader().load(relPath);
+  }
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   t.generateMipmaps = true;
@@ -374,15 +383,16 @@ function setProgress(p, msg) {
 }
 
 async function boot() {
-  const res = await fetch('scene.json');
-  envData = await res.json();
+  envData = (IDATA && IDATA.scene) ? IDATA.scene : await (await fetch('scene.json')).json();
   setProgress(0.12, '场景图已解析');
 
   // 预取网格
   const meshFiles = [...new Set(envData.renderers.map(r => r.meshFile))];
   let done = 0;
   for (const mf of meshFiles) {
-    const g = await (await fetch(mf)).json();
+    const g = (IDATA && IDATA.meshes && IDATA.meshes[mf])
+      ? IDATA.meshes[mf]
+      : await (await fetch(mf)).json();
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(g.positions, 3));
     if (g.uvs && g.uvs.length) geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uvs, 2));

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>扑火 — The Plan 弹幕</title>
+<style>
+  :root{
+    --ink:#dfe9f2; --dim:#8fa3b4; --line:rgba(150,200,235,.18);
+    --panel:rgba(8,14,20,.62); --accent:#8fe8ff; --hot:#ffb37a; --mag:#ff7ad9;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#05070a;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,"Courier New","PingFang SC","Microsoft YaHei",monospace;
+    color:var(--ink);user-select:none}
+  canvas{display:block}
+  #app{position:fixed;inset:0;cursor:crosshair}
+
+  /* ---------- HUD ---------- */
+  .panel{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none;z-index:3}
+  #hud{display:none}
+  #hud.on{display:block}
+  #scoreBox{top:12px;left:12px;padding:9px 14px 10px;min-width:190px}
+  #scoreBox .lbl{font-size:10px;letter-spacing:.22em;color:var(--dim)}
+  #score{font-size:21px;font-weight:700;letter-spacing:.05em;font-variant-numeric:tabular-nums;color:#fff;
+    text-shadow:0 0 12px rgba(143,232,255,.45)}
+  #hi{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+  #combo{margin-top:3px;font-size:12px;color:var(--hot);font-weight:700;opacity:0;transition:opacity .18s}
+  #combo.on{opacity:1}
+  #statusBox{top:12px;right:12px;padding:9px 14px;text-align:right;min-width:150px}
+  .srow{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:2px 0;font-size:11px;color:var(--dim)}
+  .srow b{color:var(--ink);font-variant-numeric:tabular-nums}
+  #lives span,#bombs span{display:inline-block;width:13px;height:13px;margin-left:4px;border-radius:50%}
+  #lives span{background:radial-gradient(circle at 40% 35%,#fff,#8fe8ff 55%,rgba(143,232,255,.15) 75%,transparent 76%)}
+  #bombs span{background:radial-gradient(circle at 40% 35%,#fff,#ffb37a 55%,rgba(255,179,122,.15) 75%,transparent 76%)}
+  #power{letter-spacing:.12em;color:var(--accent)}
+  #graze{color:var(--mag)}
+
+  /* 高度尺 */
+  #rail{top:50%;right:12px;transform:translateY(-50%);width:10px;height:52vh;border-radius:6px;overflow:hidden}
+  #railFill{position:absolute;bottom:0;left:0;right:0;height:0%;
+    background:linear-gradient(to top,#1d5f7a,#8fe8ff);box-shadow:0 0 10px rgba(143,232,255,.6)}
+  .mark{position:absolute;left:-4px;width:18px;height:2px;background:rgba(255,255,255,.55)}
+  .mark.boss{background:var(--mag);box-shadow:0 0 6px var(--mag)}
+  #altText{position:absolute;right:30px;top:50%;transform:translateY(-50%);text-align:right;color:var(--dim);font-size:11px}
+  #altText b{display:block;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+  /* Boss 血条 */
+  #bossbar{display:none;top:14px;left:50%;transform:translateX(-50%);width:min(560px,62vw);padding:7px 12px 9px}
+  #bossbar.on{display:block}
+  #bossname{font-size:11px;letter-spacing:.3em;color:var(--mag);text-align:center;margin-bottom:5px}
+  #bosstrack{height:8px;background:rgba(255,255,255,.09);border-radius:4px;overflow:hidden}
+  #bossfill{height:100%;width:100%;border-radius:4px;
+    background:linear-gradient(90deg,#ff7ad9,#ffb37a,#fff);box-shadow:0 0 12px rgba(255,122,217,.7);
+    transition:width .12s linear}
+
+  /* ---------- 覆盖层 ---------- */
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+    z-index:6;background:radial-gradient(ellipse at 50% 60%,rgba(10,20,30,.72),rgba(3,5,8,.94));text-align:center}
+  .overlay.hidden{display:none}
+  #logo{width:min(300px,54vw);filter:invert(1) drop-shadow(0 0 18px rgba(143,232,255,.35));opacity:.92;margin-bottom:2px}
+  #title h1{margin:2px 0 0;font-size:30px;letter-spacing:.5em;text-indent:.5em;color:#fff;
+    text-shadow:0 0 24px rgba(143,232,255,.55)}
+  #title .zh{font-size:13px;letter-spacing:.9em;text-indent:.9em;color:var(--accent);margin-top:6px}
+  #title .desc{max-width:520px;color:var(--dim);font-size:12px;line-height:1.9;margin:22px 12px 0}
+  #keys{display:grid;grid-template-columns:auto auto;gap:4px 26px;margin:20px 0 6px;font-size:12px;color:var(--dim);text-align:left}
+  #keys kbd{background:rgba(143,232,255,.1);border:1px solid var(--line);border-radius:5px;padding:1px 7px;
+    color:var(--ink);font:inherit;margin-right:2px}
+  .bigbtn{pointer-events:auto;margin-top:24px;padding:12px 52px;font:inherit;font-size:15px;letter-spacing:.4em;text-indent:.4em;
+    color:#04121a;background:linear-gradient(180deg,#c9f4ff,#8fe8ff);border:0;border-radius:999px;cursor:pointer;
+    box-shadow:0 0 28px rgba(143,232,255,.45);transition:transform .12s,box-shadow .12s}
+  .bigbtn:hover{transform:translateY(-2px);box-shadow:0 0 40px rgba(143,232,255,.75)}
+  .hiscore{margin-top:14px;color:var(--dim);font-size:12px}
+  .hiscore b{color:var(--hot)}
+
+  #over h1{font-size:26px;letter-spacing:.4em;color:#fff;margin:0 0 6px;text-shadow:0 0 22px rgba(255,122,217,.6)}
+  #over .cause{color:var(--dim);font-size:12px;margin-bottom:22px}
+  .res{display:grid;grid-template-columns:auto auto;gap:7px 30px;font-size:13px;text-align:left}
+  .res .lbl{color:var(--dim);letter-spacing:.15em}
+  .res b{font-size:16px;color:#fff;font-variant-numeric:tabular-nums;text-align:right}
+  .res .best{color:var(--hot)}
+  #newRec{display:none;margin-top:10px;color:var(--hot);font-size:12px;letter-spacing:.3em}
+  #newRec.on{display:block;animation:pulse 1s infinite alternate}
+  @keyframes pulse{from{opacity:.55}to{opacity:1}}
+
+  #banner{position:fixed;top:26%;left:0;right:0;text-align:center;z-index:5;pointer-events:none;
+    font-size:24px;letter-spacing:.5em;text-indent:.5em;color:#fff;opacity:0;transition:opacity .3s;
+    text-shadow:0 0 26px currentColor}
+  #banner.on{opacity:1}
+  #banner .sub{display:block;font-size:12px;letter-spacing:.35em;color:var(--dim);margin-top:8px;text-indent:.35em}
+
+  #pauseOv p{color:var(--dim);font-size:13px;letter-spacing:.3em}
+  #pauseOv h1{font-size:22px;letter-spacing:.6em;color:#fff;margin:0 0 14px}
+
+  /* 触屏炸弹钮 */
+  #bombBtn{display:none;position:fixed;right:22px;bottom:26px;width:74px;height:74px;border-radius:50%;z-index:4;
+    border:1px solid var(--line);background:rgba(255,179,122,.14);color:var(--hot);font:inherit;font-size:12px;
+    letter-spacing:.2em;pointer-events:auto}
+  #bombBtn.on{display:block}
+  @media (max-width:760px){
+    #scoreBox{min-width:0;padding:7px 10px} #score{font-size:16px}
+    #statusBox{padding:7px 10px} #rail{display:none} #altText{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="scoreBox" class="panel">
+    <div class="lbl">SCORE 得分</div>
+    <div id="score">0</div>
+    <div id="hi">HI 0</div>
+    <div id="combo">COMBO ×1.0</div>
+  </div>
+  <div id="statusBox" class="panel">
+    <div class="srow"><span>残机 LIVES</span><span id="lives"></span></div>
+    <div class="srow"><span>光爆 BOMB</span><span id="bombs"></span></div>
+    <div class="srow"><span>火力 POWER</span><b id="power">◆</b></div>
+    <div class="srow"><span>擦弹 GRAZE</span><b id="graze">0</b></div>
+  </div>
+  <div id="rail" class="panel"><div id="railFill"></div></div>
+  <div id="altText" class="panel" style="background:none;border:0;backdrop-filter:none">
+    <b id="alt">0 m</b>ALTITUDE
+  </div>
+  <div id="bossbar" class="panel">
+    <div id="bossname">THE WEAVER</div>
+    <div id="bosstrack"><div id="bossfill"></div></div>
+  </div>
+</div>
+
+<button id="bombBtn">光爆<br>BOMB</button>
+
+<div id="banner"></div>
+
+<div id="title" class="overlay">
+  <img id="logo" src="tex/logo.png" alt="the plan" />
+  <h1>TOWARD THE LIGHT</h1>
+  <div class="zh">扑 火 · 弹 幕</div>
+  <div class="desc">
+    一只苍蝇，向着一盏 542 米高处的灯泡飞行。<br>
+    穿过整片森林的弹幕，擦过每一颗光的尘埃。<br>
+    <span style="color:var(--accent)">贴图驱动的 2.5D 森林 · 15 级渲染队列分层 · HDR Bloom 后期链</span>
+  </div>
+  <div id="keys">
+    <span><kbd>W A S D</kbd>/<kbd>←↑↓→</kbd> / 鼠标</span><span>移动</span>
+    <span><kbd>Shift</kbd></span><span>低速（显示判定点）</span>
+    <span><kbd>X</kbd> / <kbd>K</kbd> / 右键</span><span>光爆（消弹）</span>
+    <span><kbd>P</kbd> / <kbd>Esc</kbd></span><span>暂停　　<kbd>M</kbd> 静音</span>
+  </div>
+  <button class="bigbtn" id="startBtn">起 飞</button>
+  <div class="hiscore">HI-SCORE <b id="titleHi">0</b></div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <h1>PLAN ENDED</h1>
+  <div class="cause" id="cause">坠落黑暗</div>
+  <div class="res">
+    <span class="lbl">SCORE</span><b id="rScore">0</b>
+    <span class="lbl">ALTITUDE</span><b id="rAlt">0 m</b>
+    <span class="lbl">GRAZE</span><b id="rGraze">0</b>
+    <span class="lbl">LEVEL</span><b id="rLv">1</b>
+    <span class="lbl">HI-SCORE</span><b id="rHi" class="best">0</b>
+  </div>
+  <div id="newRec">— NEW RECORD —</div>
+  <button class="bigbtn" id="retryBtn">再 飞</button>
+</div>
+
+<div id="pauseOv" class="overlay hidden">
+  <h1>PAUSED</h1>
+  <p>按 P / Esc 继续</p>
+</div>
+
+<div id="load">
+  <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;
+    background:#05070a;z-index:9;color:#cfd8e3;font-size:13px">
+    <div>正在展开森林…</div>
+    <div style="width:230px;height:3px;background:#1b2430;border-radius:2px;overflow:hidden">
+      <i id="loadBar" style="display:block;height:100%;width:0;background:#8fe8ff;transition:width .25s"></i>
+    </div>
+    <div id="loadMsg" style="font-size:11.5px;opacity:.6"></div>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
